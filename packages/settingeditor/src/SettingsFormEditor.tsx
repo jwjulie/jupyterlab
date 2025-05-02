@@ -80,10 +80,6 @@ export namespace SettingsFormEditor {
      */
     isModified: boolean;
 
-    // The following are state derived from props for memoization to avoid
-    // `Form` update that results in focus lost
-    // A better fix (that will break the API) would be to move this as props
-    // of the component
     /**
      * Form UI schema
      */
@@ -112,6 +108,7 @@ export class SettingsFormEditor extends React.Component<
     const { settings } = props;
     settings.changed.connect(this._syncFormDataWithSettings);
     this._formData = settings.composite as ReadonlyJSONObject;
+    this._fullFormData = { ...this._formData };
     this.state = {
       isModified: settings.isModified,
       uiSchema: {},
@@ -136,6 +133,8 @@ export class SettingsFormEditor extends React.Component<
     this._setFilteredSchema(prevProps.filteredValues);
 
     if (prevProps.settings !== this.props.settings) {
+      this._formData = this.props.settings.composite as ReadonlyJSONObject;
+      this._fullFormData = { ...this._formData };
       this.setState(previousState => ({
         formContext: {
           ...previousState.formContext,
@@ -154,17 +153,16 @@ export class SettingsFormEditor extends React.Component<
    * Handler for edits made in the form editor.
    */
   handleChange(): void {
-    // Prevent unnecessary save when opening settings that haven't been modified.
     if (
       !this.props.settings.isModified &&
-      this._formData &&
-      this.props.settings.isDefault(this._formData)
+      this._fullFormData &&
+      this.props.settings.isDefault(this._fullFormData)
     ) {
       this.props.updateDirtyState(false);
       return;
     }
     this.props.settings
-      .save(JSON.stringify(this._formData, undefined, JSON_INDENTATION))
+      .save(JSON.stringify(this._fullFormData, undefined, JSON_INDENTATION))
       .then(() => {
         this.props.updateDirtyState(false);
         this.setState({ isModified: this.props.settings.isModified });
@@ -177,9 +175,7 @@ export class SettingsFormEditor extends React.Component<
   }
 
   /**
-   * Handler for the "Restore to defaults" button - clears all
-   * modified settings then calls `setFormData` to restore the
-   * values.
+   * Handler for the "Restore to defaults" button
    */
   reset = async (event: React.MouseEvent): Promise<void> => {
     event.stopPropagation();
@@ -187,11 +183,13 @@ export class SettingsFormEditor extends React.Component<
       await this.props.settings.remove(field);
     }
     this._formData = this.props.settings.composite as ReadonlyJSONObject;
+    this._fullFormData = { ...this._formData };
     this.setState({ isModified: false });
   };
 
   private _syncFormDataWithSettings = () => {
     this._formData = this.props.settings.composite as ReadonlyJSONObject;
+    this._fullFormData = { ...this._formData };
     this.setState((prevState, props) => ({
       isModified: props.settings.isModified
     }));
@@ -242,6 +240,10 @@ export class SettingsFormEditor extends React.Component<
   private _onChange = (e: IChangeEvent<ReadonlyPartialJSONObject>): void => {
     this.props.hasError(e.errors.length !== 0);
     this._formData = e.formData as ReadonlyJSONObject;
+    this._fullFormData = {
+      ...this._fullFormData,
+      ...this._formData
+    };
     if (e.errors.length === 0) {
       this.props.updateDirtyState(true);
       void this._debouncer.invoke();
@@ -257,9 +259,6 @@ export class SettingsFormEditor extends React.Component<
         Object.keys(renderers ?? {}).sort()
       )
     ) {
-      /**
-       * Construct uiSchema to pass any custom renderers to the form editor.
-       */
       const uiSchema: UiSchema = {};
       for (const id in this.props.renderers[this.props.settings.id]) {
         if (
@@ -275,7 +274,6 @@ export class SettingsFormEditor extends React.Component<
   }
 
   private _setFilteredSchema(prevFilteredValues?: string[] | null) {
-    // Update the filtered value if the filter or the schema has changed.
     if (
       prevFilteredValues === undefined ||
       !JSONExt.deepEqual(prevFilteredValues, this.props.filteredValues) ||
@@ -284,9 +282,6 @@ export class SettingsFormEditor extends React.Component<
         this.props.settings.schema
       )
     ) {
-      /**
-       * Only show fields that match search value.
-       */
       const filteredSchema = JSONExt.deepCopy(this.props.settings.schema);
       if (this.props.filteredValues?.length ?? 0 > 0) {
         for (const field in filteredSchema.properties) {
@@ -328,4 +323,5 @@ export class SettingsFormEditor extends React.Component<
 
   private _debouncer: Debouncer<void, any>;
   private _formData: ReadonlyJSONObject;
+  private _fullFormData: PartialJSONObject;
 }
