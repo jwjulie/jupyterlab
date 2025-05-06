@@ -11,7 +11,7 @@ import { ITranslator } from '@jupyterlab/translation';
 import { FormComponent } from '@jupyterlab/ui-components';
 import {
   JSONExt,
-  PartialJSONObject,
+  // PartialJSONObject,
   ReadonlyJSONObject,
   ReadonlyPartialJSONObject
 } from '@lumino/coreutils';
@@ -284,10 +284,10 @@ export class SettingsFormEditor extends React.Component<
         this.props.settings.schema
       )
     ) {
-      /**
-       * Only show fields that match search value.
-       */
       const filteredSchema = JSONExt.deepCopy(this.props.settings.schema);
+      // Start with the current uiSchema or an empty one
+      const uiSchema: UiSchema = { ...this.state.uiSchema };
+
       if (this.props.filteredValues?.length ?? 0 > 0) {
         for (const field in filteredSchema.properties) {
           if (
@@ -295,12 +295,36 @@ export class SettingsFormEditor extends React.Component<
               filteredSchema.properties[field].title ?? field
             )
           ) {
-            delete filteredSchema.properties[field];
+            // Hide fields using UI schema
+            uiSchema[field] = {
+              ...uiSchema[field],
+              'ui:widget': 'hidden'
+            };
+          } else {
+            // Ensure visible fields are not hidden
+            if (uiSchema[field]) {
+              delete uiSchema[field]['ui:widget'];
+              if (Object.keys(uiSchema[field]).length === 0) {
+                delete uiSchema[field];
+              }
+            }
+          }
+        }
+      } else {
+        // When no filter is active, ensure no fields are hidden
+        for (const field in uiSchema) {
+          if (uiSchema[field]['ui:widget'] === 'hidden') {
+            delete uiSchema[field]['ui:widget'];
+            if (Object.keys(uiSchema[field]).length === 0) {
+              delete uiSchema[field];
+            }
           }
         }
       }
+
       this.setState(previousState => ({
         filteredSchema,
+        uiSchema,
         formContext: {
           ...previousState.formContext,
           schema: JSONExt.deepCopy(this.props.settings.schema)
@@ -312,18 +336,7 @@ export class SettingsFormEditor extends React.Component<
   private _getFilteredFormData(
     filteredSchema?: ISettingRegistry.ISchema
   ): ReadonlyJSONObject {
-    if (!filteredSchema?.properties) {
-      return this._formData;
-    }
-    const filteredFormData = JSONExt.deepCopy(
-      this._formData as PartialJSONObject
-    );
-    for (const field in filteredFormData) {
-      if (!filteredSchema.properties[field]) {
-        delete filteredFormData[field];
-      }
-    }
-    return filteredFormData as ReadonlyJSONObject;
+    return this._formData;
   }
 
   private _debouncer: Debouncer<void, any>;
